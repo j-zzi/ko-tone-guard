@@ -302,6 +302,10 @@ describe('파싱', () => {
     for (const cmd of [heredoc, quoted]) await $.tool.call({ tool: 'Bash', command: cmd })
     expect(ran).toEqual([heredoc, quoted])
     expect((await $.tool.call({ tool: 'Bash', command: `bash -c "git commit -m '획기적인 캐시'"` })).deny).toBeDefined()
+    const example = "cat <<'EOF' > n.md\n예: bash -c \"git commit -m '획기적인 캐시'\"\nEOF"
+    await $.tool.call({ tool: 'Bash', command: example })
+    expect(ran).toEqual([heredoc, quoted, example])
+    expect((await $.tool.call({ tool: 'Bash', command: "bash <<'EOF'\ngit commit -m '획기적인 캐시'\nEOF" })).deny).toBeDefined()
     expect(codeOnly('git commit -m "a b"')).toHaveLength('git commit -m "a b"'.length)
     expect(targetDir('git -C "/a b" commit -m "fix: x"')).toBe('/a b')
     expect(commitMessage('echo "git commit" && git commit -m "fix: x"')).toBe('fix: x')
