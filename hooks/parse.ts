@@ -7,11 +7,12 @@ export const GIT_COMMIT = new RegExp(`\\bgit\\s+(?:${GIT_OPT}\\s+)*commit\\b`)
 // heredoc 본문·따옴표 안은 실행되지 않는 텍스트라, 그 안의 git 명령을 실제 명령으로 읽지 않도록 길이를 유지한 채 비운다.
 // sh -c · eval 은 문자열 자체가 실행되므로 비우지 않는다.
 export function codeOnly(command: string): string {
-  if (/\b(?:ba|z)?sh\s+-c\b|\beval\b/.test(command)) return command
   const noHeredoc = command.replace(
     /(<<-?\s*['"]?(\w+)['"]?[^\n]*\n)([\s\S]*?)(\n\s*\2\b)/g,
     (_, open: string, _tag, body: string, close: string) => open + body.replace(/[^\n]/g, ' ') + close,
   )
+  // 본문 속 bash -c 예시는 무시하고, 셸에 넘기는 heredoc 은 본문을 명령으로 본다.
+  if (/\b(?:ba|z)?sh\s+-c\b|\beval\b/.test(noHeredoc) || /^(?=[^\n]*<<)[^\n]*(?:^|[\s|;&(])(?:ba|z)?sh\b/m.test(noHeredoc)) return command
   // 짝이 안 맞는 따옴표는 어디까지가 문자열인지 알 수 없다 — 비우지 않아야 뒤의 실제 명령을 놓치지 않는다.
   return maskQuotes(noHeredoc) ?? noHeredoc
 }
