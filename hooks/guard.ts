@@ -1,25 +1,28 @@
-import type { EngineInterface, Register } from 'claude-code'
+export type GuardHost = {
+  process: { run(argv: string[], init?: { stdin?: string; timeoutMs?: number }): Promise<{ exitCode: number; stdout: string }> }
+  ui: { toast(message: string): void }
+}
 
 import { GIT_COMMIT, PR_CREATE, codeOnly, commitMessage, expandHome, hasUnresolvedVar, pendingChanges, prBody, prBodyFile, prTitle, targetDir } from './parse'
 import { COMMENT_MAX, TONE_BYPASS, addedComments, chunks, longComments, mergeIssues, ollamaBody, overlaps, parseOllama, regexIssues, stripCode } from './tone'
 import type { ToneIssue } from './tone'
 
-type Ollama = { url: string; model: string }
+export type Ollama = { url: string; model: string }
 
-async function git($: EngineInterface, dir: string | undefined, args: string[]) {
+async function git($: GuardHost, dir: string | undefined, args: string[]) {
   const r = await $.process.run(dir ? ['git', '-C', dir, ...args] : ['git', ...args])
   return r.exitCode === 0 ? r.stdout.trim() : undefined
 }
 
 // 훅은 셸 없이 git·cat 을 부르므로 ~ 를 직접 펼친다.
-async function resolveHome($: EngineInterface, path: string | undefined): Promise<string | undefined> {
+async function resolveHome($: GuardHost, path: string | undefined): Promise<string | undefined> {
   if (!path?.startsWith('~')) return path
   const home = (await $.process.run(['printenv', 'HOME'])).stdout.trim()
   return home ? expandHome(path, home) : path
 }
 
 // staged 에 더해, 같은 명령이 커밋에 넣을 변경(작업 트리 수정·새 파일)까지 합친다.
-async function commitDiff($: EngineInterface, dir: string | undefined, command: string) {
+async function commitDiff($: GuardHost, dir: string | undefined, command: string) {
   const cached = await git($, dir, ['diff', '--cached', '-U0', '--no-color'])
   const pending = pendingChanges(command)
   if (!pending) return cached
@@ -38,7 +41,7 @@ async function commitDiff($: EngineInterface, dir: string | undefined, command: 
 }
 
 // Ollama 가 꺼져 있거나 느리면 정규식 결과만으로 판정한다(fail-open).
-async function ollamaIssues($: EngineInterface, ollama: Ollama, text: string): Promise<ToneIssue[] | undefined> {
+async function ollamaIssues($: GuardHost, ollama: Ollama, text: string): Promise<ToneIssue[] | undefined> {
   try {
     const r = await $.process.run(
       // -f: HTTP 500 을 exit 0 + 빈 지적으로 받으면 실패가 "문제 없음"으로 보인다.
@@ -52,7 +55,7 @@ async function ollamaIssues($: EngineInterface, ollama: Ollama, text: string): P
 }
 
 // hard 는 매번, soft(LLM 정밀도 절반) 는 한 번만 막는다.
-async function toneProblems($: EngineInterface, ollama: Ollama, sources: { label: string; text: string | undefined }[]) {
+async function toneProblems($: GuardHost, ollama: Ollama, sources: { label: string; text: string | undefined }[]) {
   const hard: string[] = []
   const soft: string[] = []
   let llmUp = ollama.model !== ''
@@ -94,7 +97,7 @@ function toneVerdict(command: string, { hard, soft }: { hard: string[]; soft: st
 
 const UNRESOLVED = '경로에 셸 변수가 남아 있어 검사할 저장소·파일을 확인할 수 없다 — 리터럴 경로로 다시 실행하라.'
 
-async function judge($: EngineInterface, ollama: Ollama, command: string): Promise<string | undefined> {
+export async function judge($: GuardHost, ollama: Ollama, command: string): Promise<string | undefined> {
   if (command.includes(TONE_BYPASS)) return undefined
   const code = codeOnly(command)
   if (PR_CREATE.test(code)) {
@@ -121,15 +124,3 @@ async function judge($: EngineInterface, ollama: Ollama, command: string): Promi
   return toneVerdict(command, tone)
 }
 
-export const register: Register = (on, options) => {
-  const ollama: Ollama = { url: String(options.ollamaUrl ?? ''), model: String(options.ollamaModel ?? '').trim() }
-
-  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    const reason = await judge($, ollama, e.command)
-    return reason ? { deny: `ko-tone-guard: ${reason}` } : next(e)
-  }).catch(($, e, next) => {
-    // 문체 검사기의 오류로 작업을 멈추지 않는다.
-    if (!next.called) $.ui.toast('ko-tone-guard: 검사 중 오류가 나 이번 명령은 검사하지 않았다')
-    return next(e)
-  })
-}

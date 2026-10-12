@@ -1,4 +1,4 @@
-// 문체 검사의 순수 부분 — Ollama 호출은 register.tsx 가 한다.
+// 문체 검사의 순수 부분 — Ollama 호출은 guard.ts가 한다.
 
 export type ToneIssue = { phrase: string; reason: string }
 

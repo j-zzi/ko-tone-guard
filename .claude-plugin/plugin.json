@@ -1,8 +1,10 @@
 {
   "name": "ko-tone-guard",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "커밋 메시지·추가된 코드 주석·PR 제목/본문의 AI 티 나는 한국어 문체를 Bash 실행 전에 잡는다",
-  "author": { "name": "j-zzi" },
+  "author": {
+    "name": "j-zzi"
+  },
   "repository": "https://github.com/j-zzi/ko-tone-guard",
   "license": "MIT",
   "userConfig": {
@@ -18,5 +20,6 @@
       "description": "문체 검사 모델. 비우면 LLM 검사를 건너뛰고 정규식으로만 검사한다",
       "default": "gemma4:12b-it-qat"
     }
-  }
+  },
+  "hooks": "./hooks/claude.json"
 }

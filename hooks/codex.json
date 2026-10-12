@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run \"${PLUGIN_ROOT}/hooks/codex.ts\"",
+            "timeout": 120,
+            "statusMessage": "한국어 문체 검사"
+          }
+        ]
+      }
+    ]
+  }
+}
