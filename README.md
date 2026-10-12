@@ -40,6 +40,23 @@ codex plugin marketplace add j-zzi/ko-tone-guard --ref main
 codex plugin add ko-tone-guard@ko-tone-guard
 ```
 
+설치 명령은 모델·서버 주소를 묻지 않는다. 아무 설정 없이 시작하면 정규식·긴 주석 검사만 실행한다. 모델 검사도 사용하려면 **Codex를 실행하기 전에** 환경 변수를 지정한다. 아래 예시는 하나만 선택한다.
+
+```sh
+# Claude CLI로 검사 (claude 설치 및 로그인 필요)
+export KO_TONE_GUARD_MODEL=claude:sonnet
+
+# Codex CLI로 검사 (모델명은 사용할 모델로 바꾼다)
+export KO_TONE_GUARD_MODEL=codex:모델명
+
+# Ollama로 검사
+export KO_TONE_GUARD_MODEL=ollama:gemma4:12b-it-qat
+# 서버 주소를 바꿀 때만 지정 (기본 http://localhost:11434)
+export KO_TONE_GUARD_BASE_URL=http://localhost:11434
+```
+
+선택한 설정을 적용한 환경에서 `codex`를 실행한다. 터미널에서 매번 지정하지 않으려면 사용하는 셸 설정 파일(예: `~/.zshrc`)에 선택한 `export`를 넣는다. 앱에서 실행하는 Codex는 앱 실행 환경에도 해당 변수가 전달되어야 한다. `/hooks`에서는 모델·서버 주소를 설정하지 않는다. 자세한 옵션은 아래 **Codex의 검사 모델 설정**을 참고한다.
+
 새 세션에서 `/hooks`를 열어 `ko-tone-guard` 훅을 검토하고 신뢰한다. Codex는 신뢰하지 않은 훅을 실행하지 않는다. 사용하는 버전에서 훅 기능 활성화가 필요하면 `~/.codex/config.toml`의 기존 `[features]`에 `hooks = true`를 추가한다. [공식 Hooks 문서](https://learn.chatgpt.com/docs/hooks)
 
 이 저장소는 GitHub 마켓플레이스로 배포한다. 훅이 포함된 플러그인은 OpenAI 공개 플러그인 디렉터리 제출 대상이 아니다. [공식 플러그인 문서](https://developers.openai.com/plugins/build/plugins)
