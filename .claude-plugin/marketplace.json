@@ -1,0 +1,15 @@
+{
+  "name": "ko-tone-guard",
+  "owner": {
+    "name": "j-zzi"
+  },
+  "metadata": {
+    "description": "AI 티 나는 한국어 기술 문체를 커밋·PR 전에 잡는 Claude Code 플러그인"
+  },
+  "plugins": [
+    {
+      "name": "ko-tone-guard",
+      "source": "./"
+    }
+  ]
+}
