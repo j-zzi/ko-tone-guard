@@ -6,6 +6,8 @@ import { addedComments, chunks, longComments, parseOllama, regexIssues } from '.
 
 // ollama 가 없으면 curl 이 실패한 것처럼 답해 LLM 을 건너뛰게 한다.
 type Fake = {
+  cli?: 'claude' | 'codex'
+  internal?: boolean
   ollama?: { phrase: string; reason: string }[]
   diff?: string
   unstaged?: string
@@ -18,6 +20,7 @@ function ollamaReply(issues: { phrase: string; reason: string }[]) {
 
 // 테스트 환경엔 프로세스가 없어 process.run 을 아래에서 대신 답한다.
 function fakeHost(on: On, fake: Fake, ran: string[], calls: string[] = [], stdins: string[] = []) {
+  on('env.get', async () => ({ value: fake.internal ? '1' : undefined }))
   on('process.run', async (_$, e) => {
     const argv = e.argv.join(' ')
     calls.push(argv)
@@ -28,6 +31,11 @@ function fakeHost(on: On, fake: Fake, ran: string[], calls: string[] = [], stdin
     if (argv.includes('--no-index')) return out(1, fake.untracked?.[e.argv.at(-1) ?? ''] ?? '')
     if (argv.includes('diff -U0')) return out(0, fake.unstaged ?? '')
     if (argv.startsWith('curl')) return fake.ollama ? out(0, ollamaReply(fake.ollama)) : out(7, '')
+    if (argv.startsWith('env') && fake.cli) {
+      const content = JSON.stringify({ issues: fake.ollama ?? [] })
+      return out(0, fake.cli === 'claude' ? JSON.stringify({ result: content })
+        : JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: content } }))
+    }
     return out(1, '')
   })
   on('tool.call', async (_$, e) => {
@@ -107,7 +115,7 @@ describe('문체 검사', () => {
     fakeHost(on, {}, ran)
     await $.tool.call({ tool: 'Bash', command: 'git commit -m "fix: 캐시를 붙인다"' })
     expect(ran).toEqual(['git commit -m "fix: 캐시를 붙인다"'])
-    expect(toasts).toEqual(['ko-tone-guard: Ollama 응답 실패 — 문체는 정규식으로만 검사했다'])
+    expect(toasts).toEqual(['ko-tone-guard: Ollama 응답 실패 — 모델 검사 없이 정규식·긴 주석 검사를 계속한다'])
   })
 
   test('Ollama 가 답하면 토스트를 띄우지 않는다', async ($, on) => {
@@ -209,6 +217,26 @@ describe('문체 검사', () => {
 })
 
 describe('설정', () => {
+  for (const provider of ['claude', 'codex'] as const) {
+    test(`Claude 훅에서 ${provider} 검사기를 선택한다`, { options: { checkerModel: `${provider}:selected` } }, async ($, on) => {
+      const calls: string[] = []
+      fakeHost(on, { cli: provider, ollama: [{ phrase: '탄탄한 기반', reason: '자평' }] }, [], calls)
+      const r = await $.tool.call({ tool: 'Bash', command: `git commit -m "${provider} 선택: 탄탄한 기반"` })
+      expect(r.deny).toContain('탄탄한 기반')
+      expect(calls.some(c => c.includes(`${provider} ${provider === 'claude' ? '-p' : 'exec'} --model selected`))).toBe(true)
+      expect(calls.some(c => c.startsWith('curl'))).toBe(false)
+    })
+  }
+
+  test('검사용 CLI 안에서는 훅을 다시 실행하지 않는다', async ($, on) => {
+    const calls: string[] = []
+    const ran: string[] = []
+    fakeHost(on, { internal: true }, ran, calls)
+    await $.tool.call({ tool: 'Bash', command: 'git commit -m "획기적"' })
+    expect(calls).toEqual([])
+    expect(ran).toEqual(['git commit -m "획기적"'])
+  })
+
   test('ollamaUrl·ollamaModel 로 호출한다', { options: { ollamaUrl: 'http://gpu:8080/', ollamaModel: 'qwen3' } }, async ($, on) => {
     const ran: string[] = []
     const calls: string[] = []

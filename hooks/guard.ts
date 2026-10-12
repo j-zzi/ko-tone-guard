@@ -4,10 +4,11 @@ export type GuardHost = {
 }
 
 import { GIT_COMMIT, PR_CREATE, codeOnly, commitMessage, expandHome, hasUnresolvedVar, pendingChanges, prBody, prBodyFile, prTitle, targetDir } from './parse'
-import { COMMENT_MAX, TONE_BYPASS, addedComments, chunks, longComments, mergeIssues, ollamaBody, overlaps, parseOllama, regexIssues, stripCode } from './tone'
+import { COMMENT_MAX, TONE_BYPASS, addedComments, chunks, longComments, mergeIssues, overlaps, regexIssues, stripCode } from './tone'
 import type { ToneIssue } from './tone'
 
-export type Ollama = { url: string; model: string }
+import { checkerIssues } from './checker'
+import type { Checker } from './checker'
 
 async function git($: GuardHost, dir: string | undefined, args: string[]) {
   const r = await $.process.run(dir ? ['git', '-C', dir, ...args] : ['git', ...args])
@@ -40,36 +41,24 @@ async function commitDiff($: GuardHost, dir: string | undefined, command: string
   return parts.filter(Boolean).join('\n')
 }
 
-// Ollama 가 꺼져 있거나 느리면 정규식 결과만으로 판정한다(fail-open).
-async function ollamaIssues($: GuardHost, ollama: Ollama, text: string): Promise<ToneIssue[] | undefined> {
-  try {
-    const r = await $.process.run(
-      // -f: HTTP 500 을 exit 0 + 빈 지적으로 받으면 실패가 "문제 없음"으로 보인다.
-      ['curl', '-sf', '-m', '60', `${ollama.url.replace(/\/+$/, '')}/api/chat`, '-d', '@-'],
-      { stdin: ollamaBody(text, ollama.model), timeoutMs: 65_000 },
-    )
-    return r.exitCode === 0 ? parseOllama(r.stdout, text) : undefined
-  } catch {
-    return undefined
-  }
-}
-
 // hard 는 매번, soft(LLM 정밀도 절반) 는 한 번만 막는다.
-async function toneProblems($: GuardHost, ollama: Ollama, sources: { label: string; text: string | undefined }[]) {
+async function toneProblems($: GuardHost, checker: Checker, sources: { label: string; text: string | undefined }[]) {
   const hard: string[] = []
   const soft: string[] = []
-  let llmUp = ollama.model !== ''
+  let llmUp = checker.provider !== 'off'
+  const deadline = Date.now() + 90_000
   for (const { label, text } of sources) {
     if (!text?.trim()) continue
     const clean = stripCode(text)
     const byRegex = mergeIssues(regexIssues(clean), clean)
     const byLlm: ToneIssue[] = []
     for (const chunk of llmUp ? chunks(clean) : []) {
-      const r = await ollamaIssues($, ollama, chunk)
+      const remaining = deadline - Date.now()
+      const r = remaining > 0 ? await checkerIssues($, checker, chunk, Math.min(65_000, remaining)) : undefined
       if (r === undefined) {
         llmUp = false
         // 막지는 않되(fail-open), LLM 검사가 빠졌다는 사실은 보이게 한다.
-        $.ui.toast('ko-tone-guard: Ollama 응답 실패 — 문체는 정규식으로만 검사했다')
+        $.ui.toast(`ko-tone-guard: ${checker.provider === 'ollama' ? 'Ollama' : checker.provider} 응답 실패 — 모델 검사 없이 정규식·긴 주석 검사를 계속한다`)
         break
       }
       byLlm.push(...r)
@@ -97,14 +86,14 @@ function toneVerdict(command: string, { hard, soft }: { hard: string[]; soft: st
 
 const UNRESOLVED = '경로에 셸 변수가 남아 있어 검사할 저장소·파일을 확인할 수 없다 — 리터럴 경로로 다시 실행하라.'
 
-export async function judge($: GuardHost, ollama: Ollama, command: string): Promise<string | undefined> {
+export async function judge($: GuardHost, checker: Checker, command: string): Promise<string | undefined> {
   if (command.includes(TONE_BYPASS)) return undefined
   const code = codeOnly(command)
   if (PR_CREATE.test(code)) {
     const file = await resolveHome($, prBodyFile(command))
     if (hasUnresolvedVar(file)) return UNRESOLVED
     const body = file ? (await $.process.run(['cat', file])).stdout : prBody(command)
-    const problems = await toneProblems($, ollama, [
+    const problems = await toneProblems($, checker, [
       { label: 'PR 제목', text: prTitle(command) },
       { label: 'PR 본문', text: body },
     ])
@@ -115,7 +104,7 @@ export async function judge($: GuardHost, ollama: Ollama, command: string): Prom
   const dir = await resolveHome($, targetDir(command))
   if (hasUnresolvedVar(dir)) return UNRESOLVED
   const diff = await commitDiff($, dir, command)
-  const tone = await toneProblems($, ollama, [
+  const tone = await toneProblems($, checker, [
     { label: '커밋 메시지', text: commitMessage(command) },
     { label: '추가된 주석', text: diff && addedComments(diff) },
   ])

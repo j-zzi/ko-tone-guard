@@ -46,17 +46,28 @@ codex plugin add ko-tone-guard@ko-tone-guard
 
 ## 검사 방식과 설정
 
-두 환경은 같은 검사 로직을 사용하며 기본 LLM 설정만 다르다.
+검사기를 실행 환경과 독립적으로 선택한다. Claude Code에서 Codex CLI를, Codex에서 Claude CLI를 사용할 수 있다. 선택한 모델 접두사로 검사기를 결정하며 대화 중인 모델을 자동으로 따라가지는 않는다.
+
+| 모델 설정 | 검사기 |
+|---|---|
+| `claude:sonnet` 또는 `claude:모델명` | Claude CLI (`claude -p`) |
+| `codex:모델명` | Codex CLI (`codex exec`) |
+| `ollama:gemma4:12b-it-qat` 또는 `ollama:모델명` | Ollama HTTP API |
+| `off` | 모델 검사 끄기 |
+
+Claude·Codex CLI는 설치 및 로그인이 필요하고, 훅 프로세스에서 해당 실행 파일을 찾을 수 있어야 한다. 지정한 모델은 검사 CLI에 그대로 전달한다. CLI는 일회성으로 실행하고 검사 대상 텍스트를 stdin으로 보낸다. Claude 검사에는 도구·MCP를 끄고, Codex 검사에는 셸·웹 검색을 끄고 읽기 전용 샌드박스를 사용한다. 검사 자식 프로세스에는 훅 재진입 방지 표시를 전달한다. CLI 응답이 없거나 형식이 잘못되면 알림과 함께 정규식·긴 주석 검사를 계속한다. 모델 검사 전체에 90초, 각 호출에 최대 65초를 할당한다.
+
+기존 Ollama 설정은 계속 지원한다. 새 모델 설정이 비어 있으면 기존 설정을 사용한다.
 
 | 검사 | Claude Code 기본값 | Codex 기본값 | 지적 시 동작 |
 |---|---|---|---|
 | 정규식 문체 검사 | 켜짐 | 켜짐 | 고칠 때까지 매번 차단 |
 | 긴 주석 검사 | 켜짐 | 켜짐 | 한 번 차단, 같은 명령을 다시 실행하면 통과 |
-| Ollama 문체 검사 | `gemma4:12b-it-qat` 사용 시도 | 꺼짐 | 한 번 차단, 같은 명령을 다시 실행하면 통과 |
+| 기본 모델 검사 | `gemma4:12b-it-qat` 사용 시도 | 꺼짐 | 한 번 차단, 같은 명령을 다시 실행하면 통과 |
 
-Ollama는 정규식이 놓치는 표현을 검사하는 선택 기능이다. 에이전트가 사용하는 Claude·Codex 모델은 바꾸지 않아도 된다. Ollama가 없거나 응답하지 않으면 정규식과 긴 주석 검사를 계속하고 알림을 남긴다. 검사기 자체에 오류가 나면 알림을 남기고 명령을 통과시킨다.
+모델 검사는 정규식이 놓치는 표현을 검사하는 선택 기능이다. 에이전트가 사용하는 Claude·Codex 모델은 바꾸지 않아도 된다. Ollama가 없거나 응답하지 않으면 정규식과 긴 주석 검사를 계속하고 알림을 남긴다. 검사기 자체에 오류가 나면 알림을 남기고 명령을 통과시킨다.
 
-### Claude Code의 Ollama 설정
+### Claude Code의 검사 모델 설정
 
 ```sh
 claude plugin configure ko-tone-guard@ko-tone-guard
@@ -64,29 +75,44 @@ claude plugin configure ko-tone-guard@ko-tone-guard
 
 | 설정 | 기본값 | 설명 |
 |---|---|---|
+| `checkerModel` | 빈 문자열 | `claude:모델`, `codex:모델`, `ollama:모델`, `off`. 빈 문자열이면 기존 Ollama 설정 사용 |
 | `ollamaUrl` | `http://localhost:11434` | Ollama 서버 주소 |
-| `ollamaModel` | `gemma4:12b-it-qat` | 문체 검사 모델. 빈 문자열이면 LLM 검사 끄기 |
+| `ollamaModel` | `gemma4:12b-it-qat` | 기존 Ollama 모델 설정. `checkerModel`이 비어 있을 때만 사용 |
+
+예를 들어 Claude Code에서 Codex CLI로 검사하려면 (모델명은 사용할 모델로 바꾼다):
+
+```sh
+printf '%s\n' '{"checkerModel":"codex:모델명"}' | claude plugin configure ko-tone-guard@ko-tone-guard --values-stdin
+```
 
 LLM 검사를 끄려면:
 
 ```sh
-printf '%s\n' '{"ollamaModel":""}' | claude plugin configure ko-tone-guard@ko-tone-guard --values-stdin
+printf '%s\n' '{"checkerModel":"off"}' | claude plugin configure ko-tone-guard@ko-tone-guard --values-stdin
 ```
 
-### Codex의 Ollama 설정
+### Codex의 검사 모델 설정
 
 Codex를 실행하는 환경에 아래 변수를 설정한다.
 
 | 환경 변수 | 기본값 | 설명 |
 |---|---|---|
+| `KO_TONE_GUARD_MODEL` | 빈 문자열 | `claude:모델`, `codex:모델`, `ollama:모델`, `off`. 빈 문자열이면 기존 Ollama 설정 사용 |
 | `KO_TONE_GUARD_OLLAMA_URL` | `http://localhost:11434` | Ollama 서버 주소 |
-| `KO_TONE_GUARD_OLLAMA_MODEL` | 빈 문자열 | 문체 검사 모델. 미설정 또는 빈 문자열이면 LLM 검사 끄기 |
+| `KO_TONE_GUARD_OLLAMA_MODEL` | 빈 문자열 | 기존 Ollama 모델 설정. `KO_TONE_GUARD_MODEL`이 비어 있을 때만 사용 |
 
-예를 들어 기존 Claude 기본 설정과 같은 모델을 쓰려면:
+예를 들어 Codex에서 Claude CLI로 검사하려면:
+
+```sh
+export KO_TONE_GUARD_MODEL=claude:sonnet
+codex
+```
+
+Ollama를 사용하려면:
 
 ```sh
 ollama pull gemma4:12b-it-qat
-export KO_TONE_GUARD_OLLAMA_MODEL=gemma4:12b-it-qat
+export KO_TONE_GUARD_MODEL=ollama:gemma4:12b-it-qat
 codex
 ```
 
@@ -120,7 +146,7 @@ KO_TONE_GUARD=off git commit -m "..."
 
 - 실행할 명령 문자열을 파싱한다. 셸 변수로 넘긴 경로(`git -C $DIR`, `--body-file $F`)는 같은 명령 안에서 대입한 경우만 풀 수 있다. 풀지 못하면 리터럴 경로로 다시 실행하라고 차단한다.
 - 주석 검사는 `.ts`·`.js`·`.sh`·`.sql`·`.py`·`.yaml` 계열 파일을 대상으로 한다.
-- Ollama 지적과 긴 주석 경고는 재시도 시 통과하므로 강제 규칙으로 쓰기에는 한계가 있다.
+- 모델 지적과 긴 주석 경고는 재시도 시 통과하므로 강제 규칙으로 쓰기에는 한계가 있다.
 
 ## 개발
 
@@ -129,7 +155,7 @@ KO_TONE_GUARD=off git commit -m "..."
 | 플러그인 manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
 | 훅 설정 | `hooks/claude.json` | `hooks/codex.json` |
 | 연결 코드 | `hooks/claude.ts` | `hooks/codex.ts` |
-| 공통 검사 | `hooks/guard.ts`, `hooks/tone.ts`, `hooks/parse.ts` | 동일 |
+| 공통 검사 | `hooks/guard.ts`, `hooks/checker.ts`, `hooks/tone.ts`, `hooks/parse.ts` | 동일 |
 
 ```sh
 claude plugin validate .

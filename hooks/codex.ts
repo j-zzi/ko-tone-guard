@@ -5,9 +5,11 @@ import { tmpdir } from 'node:os'
 import { spawn } from 'node:child_process'
 import { judge } from './guard'
 import type { GuardHost } from './guard'
+import { checkerConfig } from './checker'
 
 // 훅 프로세스 사이에 같은 세션의 soft 경고를 유지한다.
 async function main() {
+  if (process.env.KO_TONE_GUARD_INTERNAL === '1') return
   let input = ''
   for await (const chunk of process.stdin) input += chunk
   const event = JSON.parse(input)
@@ -35,10 +37,11 @@ async function main() {
       }),
     },
   }
-  let reason = await judge(host, {
-    url: process.env.KO_TONE_GUARD_OLLAMA_URL ?? 'http://localhost:11434',
-    model: process.env.KO_TONE_GUARD_OLLAMA_MODEL?.trim() ?? '',
-  }, command)
+  let reason = await judge(host, checkerConfig(
+    process.env.KO_TONE_GUARD_MODEL ?? '',
+    process.env.KO_TONE_GUARD_OLLAMA_URL ?? 'http://localhost:11434',
+    process.env.KO_TONE_GUARD_OLLAMA_MODEL ?? '',
+  ), command)
   if (reason?.startsWith('문체 경고(오탐 가능)')) {
     const key = createHash('sha256').update(`${event.session_id ?? event.cwd}\n${command}\n${reason}`).digest('hex')
     const dir = process.env.PLUGIN_DATA ?? join(tmpdir(), 'ko-tone-guard')

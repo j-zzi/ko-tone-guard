@@ -19,11 +19,13 @@ class CodexHookTest(unittest.TestCase):
     def git(self, *args):
         subprocess.run(['git', '-C', str(self.repo), *args], check=True, capture_output=True)
 
-    def hook(self, command, session='test', **fields):
+    def hook(self, command, session='test', env_overrides=None, **fields):
         event = dict(hook_event_name='PreToolUse', tool_name='Bash', cwd=str(self.repo),
                      session_id=session, tool_input=dict(command=command))
         event.update(fields)
-        env = dict(os.environ, KO_TONE_GUARD_OLLAMA_MODEL='', PLUGIN_DATA=str(self.repo / 'data'))
+        env = dict(os.environ, KO_TONE_GUARD_MODEL='off', KO_TONE_GUARD_INTERNAL='',
+                   KO_TONE_GUARD_OLLAMA_MODEL='', PLUGIN_DATA=str(self.repo / 'data'))
+        env.update(env_overrides or {})
         result = subprocess.run(['bun', 'run', str(HOOK)], input=json.dumps(event), text=True,
                                 capture_output=True, check=True, env=env)
         return json.loads(result.stdout or '{}')
@@ -76,6 +78,46 @@ class CodexHookTest(unittest.TestCase):
 
     def test_bypass(self):
         self.assertEqual(self.hook('KO_TONE_GUARD=off git commit -m "획기적"'), {})
+
+    def test_cli_checker_selection(self):
+        for provider in ('claude', 'codex'):
+            with self.subTest(provider=provider):
+                executable = self.repo / provider
+                executable.write_text(
+                    '#!/usr/bin/env python3\n'
+                    'import json, os, sys\n'
+                    'from pathlib import Path\n'
+                    'Path("cli-call.json").write_text(json.dumps(dict(argv=sys.argv, '
+                    'stdin=sys.stdin.read(), internal=os.environ.get("KO_TONE_GUARD_INTERNAL"), '
+                    'claudecode=os.environ.get("CLAUDECODE"))))\n'
+                    'content=json.dumps({"issues":[{"phrase":"탄탄한 기반","reason":"자평"}]})\n'
+                    f'provider={provider!r}\n'
+                    'print(json.dumps({"result":content} if provider=="claude" else '
+                    '{"type":"item.completed","item":{"type":"agent_message","text":content}}))\n'
+                )
+                executable.chmod(0o755)
+                env = dict(KO_TONE_GUARD_MODEL=f'{provider}:selected',
+                           PATH=f'{self.repo}:{os.environ["PATH"]}', CLAUDECODE='1')
+                command = f'git commit -m "{provider}: 탄탄한 기반"'
+                self.assertIn('탄탄한 기반', self.denied(self.hook(command, env_overrides=env)))
+                call = json.loads((self.repo / 'cli-call.json').read_text())
+                self.assertEqual(call['argv'][call['argv'].index('--model') + 1], 'selected')
+                self.assertEqual(call['internal'], '1')
+                if provider == 'claude':
+                    self.assertIsNone(call['claudecode'])
+                self.assertIn('탄탄한 기반', call['stdin'])
+                self.assertEqual(self.hook(command, env_overrides=env), {})
+
+    def test_checker_failure_preserves_regex(self):
+        executable = self.repo / 'claude'
+        executable.write_text('#!/bin/sh\nexit 1\n')
+        executable.chmod(0o755)
+        env = dict(KO_TONE_GUARD_MODEL='claude:sonnet', PATH=f'{self.repo}:{os.environ["PATH"]}')
+        self.assertIn('획기적', self.denied(self.hook('git commit -m "획기적"', env_overrides=env)))
+        self.assertIn('claude 응답 실패', self.hook('git commit -m "캐시 수정"', env_overrides=env)['systemMessage'])
+
+    def test_internal_checker_skips_hook(self):
+        self.assertEqual(self.hook('git commit -m "획기적"', env_overrides=dict(KO_TONE_GUARD_INTERNAL='1')), {})
 
     def test_other_event_and_tool(self):
         self.assertEqual(self.hook('git commit -m "획기적"', hook_event_name='PostToolUse'), {})
