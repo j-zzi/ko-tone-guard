@@ -119,6 +119,22 @@ class CodexHookTest(unittest.TestCase):
     def test_internal_checker_skips_hook(self):
         self.assertEqual(self.hook('git commit -m "획기적"', env_overrides=dict(KO_TONE_GUARD_INTERNAL='1')), {})
 
+    def test_server_url_precedence(self):
+        executable = self.repo / 'curl'
+        executable.write_text('#!/usr/bin/env python3\nimport json, sys\nfrom pathlib import Path\n'
+                              'Path("curl-argv.json").write_text(json.dumps(sys.argv))\n'
+                              'sys.stdin.read()\nprint(json.dumps({"message":{"content":"{\\"issues\\":[]}"}}))\n')
+        executable.chmod(0o755)
+        for new, old, expected in [
+            (' http://new:8080/ ', 'http://old:8080', 'http://new:8080/api/chat'),
+            (' ', 'http://old:8080/', 'http://old:8080/api/chat'),
+            ('', '', 'http://localhost:11434/api/chat'),
+        ]:
+            env = dict(KO_TONE_GUARD_MODEL='ollama:test', KO_TONE_GUARD_BASE_URL=new,
+                       KO_TONE_GUARD_OLLAMA_URL=old, PATH=f'{self.repo}:{os.environ["PATH"]}')
+            self.assertEqual(self.hook('git commit -m "캐시 수정"', env_overrides=env), {})
+            self.assertIn(expected, json.loads((self.repo / 'curl-argv.json').read_text()))
+
     def test_other_event_and_tool(self):
         self.assertEqual(self.hook('git commit -m "획기적"', hook_event_name='PostToolUse'), {})
         self.assertEqual(self.hook('git commit -m "획기적"', tool_name='apply_patch'), {})

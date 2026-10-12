@@ -64,7 +64,7 @@ describe('문체 검사', () => {
     expect(ran).toEqual([])
   })
 
-  test('LLM 지적은 원문에 있는 구절만 쓴다', async ($, on) => {
+  test('LLM 지적은 원문에 있는 구절만 쓴다', { options: { checkerModel: 'ollama:test' } }, async ($, on) => {
     const ran: string[] = []
     const fake: Fake = { ollama: [{ phrase: '탄탄한 기반', reason: '과장' }] }
     fakeHost(on, fake, ran)
@@ -97,7 +97,7 @@ describe('문체 검사', () => {
     expect(regexIssues('세션이 캐시에 있어서 빠르다')).toEqual([])
   })
 
-  test('정규식과 원문 위치가 겹치는 LLM 지적은 한 번만 보인다', async ($, on) => {
+  test('정규식과 원문 위치가 겹치는 LLM 지적은 한 번만 보인다', { options: { checkerModel: 'ollama:test' } }, async ($, on) => {
     const ran: string[] = []
     fakeHost(on, { ollama: [{ phrase: '가지고 있다', reason: '직역체' }] }, ran)
     const r = await $.tool.call({ tool: 'Bash', command: 'git commit -m "fix: 모듈은 핸들러를 가지고 있다"' })
@@ -105,7 +105,7 @@ describe('문체 검사', () => {
     expect(r.deny).not.toContain('"가지고 있다"')
   })
 
-  test('Ollama 가 실패하면 정규식만으로 판정하고 토스트로 알린다', async ($, on) => {
+  test('Ollama 가 실패하면 정규식만으로 판정하고 토스트로 알린다', { options: { checkerModel: 'ollama:test' } }, async ($, on) => {
     const ran: string[] = []
     const toasts: string[] = []
     on('ui.toast', async (_$, e) => {
@@ -118,7 +118,7 @@ describe('문체 검사', () => {
     expect(toasts).toEqual(['ko-tone-guard: Ollama 응답 실패 — 모델 검사 없이 정규식·긴 주석 검사를 계속한다'])
   })
 
-  test('Ollama 가 답하면 토스트를 띄우지 않는다', async ($, on) => {
+  test('Ollama 가 답하면 토스트를 띄우지 않는다', { options: { checkerModel: 'ollama:test' } }, async ($, on) => {
     const ran: string[] = []
     const toasts: string[] = []
     on('ui.toast', async (_$, e) => {
@@ -205,7 +205,7 @@ describe('문체 검사', () => {
     expect(ran).toEqual([cmd])
   })
 
-  test('PR 본문을 검사하고, 우회 표시가 있으면 통과', async ($, on) => {
+  test('PR 본문을 검사하고, 우회 표시가 있으면 통과', { options: { checkerModel: 'ollama:test' } }, async ($, on) => {
     const ran: string[] = []
     fakeHost(on, { ollama: [{ phrase: '핵심은', reason: '거창한 틀' }] }, ran)
     const body = `gh pr create --title "feat: 쿠폰" --body "$(cat <<'EOF'\n이번 변경의 핵심은 락이다\nEOF\n)"`
@@ -217,6 +217,39 @@ describe('문체 검사', () => {
 })
 
 describe('설정', () => {
+  test('모델 미설정은 모델 호출 없이 정규식 검사를 유지한다', async ($, on) => {
+    const calls: string[] = []
+    const ran: string[] = []
+    fakeHost(on, {}, ran, calls)
+    expect((await $.tool.call({ tool: 'Bash', command: 'git commit -m "획기적"' })).deny).toContain('획기적')
+    await $.tool.call({ tool: 'Bash', command: 'git commit -m "캐시 수정"' })
+    expect(ran).toEqual(['git commit -m "캐시 수정"'])
+    expect(calls.some(c => c.startsWith('curl') || c.startsWith('env'))).toBe(false)
+  })
+
+  test('새 모델 설정이 기존 Ollama 모델보다 우선한다', {
+    options: { checkerModel: 'ollama:new-model', ollamaModel: 'old-model' },
+  }, async ($, on) => {
+    const calls: string[] = []
+    const stdins: string[] = []
+    fakeHost(on, { ollama: [] }, [], calls, stdins)
+    await $.tool.call({ tool: 'Bash', command: 'git commit -m "캐시 수정"' })
+    expect(JSON.parse(stdins[calls.findIndex(c => c.startsWith('curl'))]!).model).toBe('new-model')
+  })
+
+  for (const [label, options, expectedUrl] of [
+    ['새 URL 우선', { baseUrl: ' http://new:8080/ ', ollamaUrl: 'http://old:8080' }, 'http://new:8080/api/chat'],
+    ['빈 새 URL은 기존 URL 사용', { baseUrl: ' ', ollamaUrl: 'http://old:8080/' }, 'http://old:8080/api/chat'],
+    ['URL 미설정은 localhost 사용', { baseUrl: '' }, 'http://localhost:11434/api/chat'],
+  ] as const) {
+    test(label, { options: { ...options, checkerModel: 'ollama:test' } }, async ($, on) => {
+      const calls: string[] = []
+      fakeHost(on, { ollama: [] }, [], calls)
+      await $.tool.call({ tool: 'Bash', command: 'git commit -m "캐시 수정"' })
+      expect(calls.find(c => c.startsWith('curl'))).toContain(expectedUrl)
+    })
+  }
+
   for (const provider of ['claude', 'codex'] as const) {
     test(`Claude 훅에서 ${provider} 검사기를 선택한다`, { options: { checkerModel: `${provider}:selected` } }, async ($, on) => {
       const calls: string[] = []

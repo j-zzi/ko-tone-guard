@@ -57,13 +57,15 @@ codex plugin add ko-tone-guard@ko-tone-guard
 
 Claude·Codex CLI는 설치 및 로그인이 필요하고, 훅 프로세스에서 해당 실행 파일을 찾을 수 있어야 한다. 지정한 모델은 검사 CLI에 그대로 전달한다. CLI는 일회성으로 실행하고 검사 대상 텍스트를 stdin으로 보낸다. Claude 검사에는 도구·MCP를 끄고, Codex 검사에는 셸·웹 검색을 끄고 읽기 전용 샌드박스를 사용한다. 검사 자식 프로세스에는 훅 재진입 방지 표시를 전달한다. CLI 응답이 없거나 형식이 잘못되면 알림과 함께 정규식·긴 주석 검사를 계속한다. 모델 검사 전체에 90초, 각 호출에 최대 65초를 할당한다.
 
-기존 Ollama 설정은 계속 지원한다. 새 모델 설정이 비어 있으면 기존 설정을 사용한다.
+신규 설정은 모델과 서버 주소만 받는다. 모델 미설정이면 정규식·긴 주석 검사만 실행한다.
+
+기존 `ollamaModel`·`ollamaUrl`과 `KO_TONE_GUARD_OLLAMA_MODEL`·`KO_TONE_GUARD_OLLAMA_URL`은 호환용으로 계속 읽는다. 새 모델·서버 주소를 지정하면 새 설정이 우선하고, 비어 있으면 기존 설정을 사용한다.
 
 | 검사 | Claude Code 기본값 | Codex 기본값 | 지적 시 동작 |
 |---|---|---|---|
 | 정규식 문체 검사 | 켜짐 | 켜짐 | 고칠 때까지 매번 차단 |
 | 긴 주석 검사 | 켜짐 | 켜짐 | 한 번 차단, 같은 명령을 다시 실행하면 통과 |
-| 기본 모델 검사 | `gemma4:12b-it-qat` 사용 시도 | 꺼짐 | 한 번 차단, 같은 명령을 다시 실행하면 통과 |
+| 기본 모델 검사 | 꺼짐 | 꺼짐 | 한 번 차단, 같은 명령을 다시 실행하면 통과 |
 
 모델 검사는 정규식이 놓치는 표현을 검사하는 선택 기능이다. 에이전트가 사용하는 Claude·Codex 모델은 바꾸지 않아도 된다. Ollama가 없거나 응답하지 않으면 정규식과 긴 주석 검사를 계속하고 알림을 남긴다. 검사기 자체에 오류가 나면 알림을 남기고 명령을 통과시킨다.
 
@@ -76,8 +78,7 @@ claude plugin configure ko-tone-guard@ko-tone-guard
 | 설정 | 기본값 | 설명 |
 |---|---|---|
 | `checkerModel` | 빈 문자열 | `claude:모델`, `codex:모델`, `ollama:모델`, `off`. 빈 문자열이면 기존 Ollama 설정 사용 |
-| `ollamaUrl` | `http://localhost:11434` | Ollama 서버 주소 |
-| `ollamaModel` | `gemma4:12b-it-qat` | 기존 Ollama 모델 설정. `checkerModel`이 비어 있을 때만 사용 |
+| `baseUrl` | 빈 문자열 | 현재는 Ollama 서버 주소에만 사용. 비우면 기존 `ollamaUrl`, 그것도 없으면 `http://localhost:11434`. CLI에서는 무시 |
 
 예를 들어 Claude Code에서 Codex CLI로 검사하려면 (모델명은 사용할 모델로 바꾼다):
 
@@ -98,8 +99,7 @@ Codex를 실행하는 환경에 아래 변수를 설정한다.
 | 환경 변수 | 기본값 | 설명 |
 |---|---|---|
 | `KO_TONE_GUARD_MODEL` | 빈 문자열 | `claude:모델`, `codex:모델`, `ollama:모델`, `off`. 빈 문자열이면 기존 Ollama 설정 사용 |
-| `KO_TONE_GUARD_OLLAMA_URL` | `http://localhost:11434` | Ollama 서버 주소 |
-| `KO_TONE_GUARD_OLLAMA_MODEL` | 빈 문자열 | 기존 Ollama 모델 설정. `KO_TONE_GUARD_MODEL`이 비어 있을 때만 사용 |
+| `KO_TONE_GUARD_BASE_URL` | 빈 문자열 | 현재는 Ollama 서버 주소에만 사용. 비우면 기존 `KO_TONE_GUARD_OLLAMA_URL`, 그것도 없으면 `http://localhost:11434`. CLI에서는 무시 |
 
 예를 들어 Codex에서 Claude CLI로 검사하려면:
 

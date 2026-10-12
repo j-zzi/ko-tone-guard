@@ -4,7 +4,7 @@ import { checkerConfig } from './checker'
 
 export const register: Register = (on, options) => {
   const selection = String(options.checkerModel ?? '')
-  const url = String(options.ollamaUrl ?? 'http://localhost:11434')
+  const url = String(options.baseUrl ?? '').trim() || String(options.ollamaUrl ?? '').trim() || 'http://localhost:11434'
   const legacyModel = String(options.ollamaModel ?? '')
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {

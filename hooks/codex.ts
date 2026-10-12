@@ -39,7 +39,7 @@ async function main() {
   }
   let reason = await judge(host, checkerConfig(
     process.env.KO_TONE_GUARD_MODEL ?? '',
-    process.env.KO_TONE_GUARD_OLLAMA_URL ?? 'http://localhost:11434',
+    process.env.KO_TONE_GUARD_BASE_URL?.trim() || process.env.KO_TONE_GUARD_OLLAMA_URL?.trim() || 'http://localhost:11434',
     process.env.KO_TONE_GUARD_OLLAMA_MODEL ?? '',
   ), command)
   if (reason?.startsWith('문체 경고(오탐 가능)')) {
