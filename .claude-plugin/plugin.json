@@ -1,7 +1,7 @@
 {
   "name": "ko-tone-guard",
-  "version": "0.3.1",
-  "description": "커밋 메시지·추가된 코드 주석·PR 제목/본문의 AI 티 나는 한국어 문체를 Bash 실행 전에 잡는다",
+  "version": "0.4.0",
+  "description": "커밋 메시지·추가된 주석·GitHub 이슈/PR/리뷰/릴리즈·Jira 티켓/댓글의 한국어 문체 검사",
   "author": {
     "name": "j-zzi"
   },

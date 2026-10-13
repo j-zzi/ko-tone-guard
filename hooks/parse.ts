@@ -147,13 +147,20 @@ export function pendingChanges(command: string): Pending | undefined {
 
 export const PR_CREATE = /\bgh\s+pr\s+create\b/
 
-function flagValue(command: string, flags: string): string | undefined {
+export function flagValue(command: string, flags: string): string | undefined {
+  const at = [...codeOnly(command).matchAll(new RegExp(`(?:^|\\s)(?:${flags})(?:\\s+|=)`, 'g'))].at(-1)
+  if (!at) return undefined
+  command = command.slice(at.index).trimStart()
+
   const heredoc = command.match(
-    new RegExp(`(?:^|\\s)(?:${flags})\\s+"\\$\\(cat\\s+<<-?\\s*['"]?(\\w+)['"]?\\s*\\n([\\s\\S]*?)\\n\\s*\\1\\b`),
+    new RegExp(`^(?:${flags})\\s+"\\$\\(cat\\s+<<-?\\s*['"]?(\\w+)['"]?\\s*\\n([\\s\\S]*?)\\n\\s*\\1\\b`),
   )
   if (heredoc) return heredoc[2]
-  const m = command.match(new RegExp(`(?:^|\\s)(?:${flags})(?:\\s+|=)(?:"((?:[^"\\\\]|\\\\.)*)"|'([^']*)')`))
-  if (!m) return undefined
+  const m = command.match(new RegExp(`^(?:${flags})(?:\\s+|=)(?:"((?:[^"\\\\]|\\\\.)*)"|'([^']*)')`))
+  if (!m) {
+    const bare = command.match(new RegExp(`^(?:${flags})(?:\\s+|=)([^\\s;&|<>]+)`))
+    return bare?.[1]
+  }
   return m[1] !== undefined ? m[1].replace(/\\(["\\$`])/g, '$1') : m[2]
 }
 
@@ -168,4 +175,9 @@ export function prBody(command: string): string | undefined {
 export function prBodyFile(command: string): string | undefined {
   const m = command.match(new RegExp(`(?:^|\\s)(?:--body-file|-F)(?:\\s+|=)${QUOTED}`))
   return m ? expandVars(command, m[1] ?? m[2] ?? m[3]!) : undefined
+}
+
+export function flagFile(command: string, flags: string, context = command): string | undefined {
+  const value = flagValue(command, flags)
+  return value === undefined ? undefined : expandVars(context, value)
 }

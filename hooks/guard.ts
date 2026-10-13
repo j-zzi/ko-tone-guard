@@ -3,12 +3,13 @@ export type GuardHost = {
   ui: { toast(message: string): void }
 }
 
-import { GIT_COMMIT, PR_CREATE, codeOnly, commitMessage, expandHome, hasUnresolvedVar, pendingChanges, prBody, prBodyFile, prTitle, targetDir } from './parse'
+import { GIT_COMMIT, codeOnly, commitMessage, expandHome, hasUnresolvedVar, pendingChanges, targetDir } from './parse'
 import { COMMENT_MAX, TONE_BYPASS, addedComments, chunks, longComments, mergeIssues, overlaps, regexIssues, stripCode } from './tone'
 import type { ToneIssue } from './tone'
 
 import { checkerIssues } from './checker'
 import type { Checker } from './checker'
+import { sourceText, textSources } from './texts'
 
 async function git($: GuardHost, dir: string | undefined, args: string[]) {
   const r = await $.process.run(dir ? ['git', '-C', dir, ...args] : ['git', ...args])
@@ -89,22 +90,30 @@ const UNRESOLVED = '경로에 셸 변수가 남아 있어 검사할 저장소·�
 export async function judge($: GuardHost, checker: Checker, command: string): Promise<string | undefined> {
   if (command.includes(TONE_BYPASS)) return undefined
   const code = codeOnly(command)
-  if (PR_CREATE.test(code)) {
-    const file = await resolveHome($, prBodyFile(command))
+  const sources: { label: string; text: string | undefined }[] = []
+  for (const source of textSources(command)) {
+    const file = await resolveHome($, source.file)
     if (hasUnresolvedVar(file)) return UNRESOLVED
-    const body = file ? (await $.process.run(['cat', file])).stdout : prBody(command)
-    const problems = await toneProblems($, checker, [
-      { label: 'PR 제목', text: prTitle(command) },
-      { label: 'PR 본문', text: body },
-    ])
-    return toneVerdict(command, problems)
+    if (file === '-') return '표준 입력 본문은 실행 전에 읽을 수 없다 — 본문을 파일에 저장해 리터럴 경로로 지정하라.'
+    let text = source.text
+    if (file !== undefined) {
+      const result = await $.process.run(['cat', '--', file])
+      if (result.exitCode !== 0) return `검사할 본문 파일을 읽을 수 없다: ${file}`
+      text = result.stdout
+    }
+    try {
+      sources.push({ label: source.label, text: text === undefined ? undefined : sourceText(text, source.format) })
+    } catch {
+      return 'Jira JSON 파일을 해석할 수 없다 — 올바른 JSON 파일로 다시 실행하라.'
+    }
   }
-  if (!GIT_COMMIT.test(code)) return undefined
+  if (!GIT_COMMIT.test(code)) return toneVerdict(command, await toneProblems($, checker, sources))
 
   const dir = await resolveHome($, targetDir(command))
   if (hasUnresolvedVar(dir)) return UNRESOLVED
   const diff = await commitDiff($, dir, command)
   const tone = await toneProblems($, checker, [
+    ...sources,
     { label: '커밋 메시지', text: commitMessage(command) },
     { label: '추가된 주석', text: diff && addedComments(diff) },
   ])

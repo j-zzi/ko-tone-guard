@@ -1,14 +1,20 @@
 # ko-tone-guard
 
-Claude Code와 Codex의 커밋 메시지·코드 주석·PR 설명에서 AI 티 나는 한국어 표현을 검사하는 플러그인.
+Claude Code와 Codex의 커밋·주석·GitHub 게시글·Jira 티켓에서 AI 티 나는 한국어 표현을 검사하는 플러그인.
 
-`git commit`이나 `gh pr create`를 실행하기 전에 문체를 검사한다. 문제가 있으면 명령을 막고, 고칠 표현과 이유를 에이전트에게 돌려준다.
+`git commit`, GitHub CLI의 글 작성·수정 명령, `acli`의 Jira 티켓·댓글 작성 명령을 실행하기 전에 문체를 검사한다. 문제가 있으면 명령을 막고, 고칠 표현과 이유를 에이전트에게 돌려준다.
 
 ## 검사 대상
 
 - 커밋 메시지
 - 이번 커밋에 추가되는 코드 주석: staged 변경, 같은 명령의 `git add`, `commit -a`
-- PR 제목과 본문: `--title`, `--body`, heredoc, `--body-file`
+- GitHub PR·이슈 생성/수정: 제목과 본문 (`--title`, `--body`, heredoc, `--body-file`)
+- GitHub PR·이슈 댓글 및 PR 리뷰: 본문 (`--body`, `--body-file`)
+- GitHub 릴리즈 생성/수정: 제목과 노트 (`--title`, `--notes`, `--notes-file`)
+- Jira `acli jira workitem create/edit`: 제목과 본문 (`--summary`, `--description`, `--description-file`, `--from-file`, `--from-json`)
+- Jira `acli jira workitem comment create/update`: 댓글 (`--body`, `--body-file`, `--body-adf`)
+
+Jira JSON 입력은 `summary`·`description`만 검사하고, ADF는 텍스트를 추출하되 코드 블록·인라인 코드는 제외한다. 이슈·PR의 라벨, 담당자 변경처럼 글을 지정하지 않는 명령은 검사하지 않는다.
 
 | 종류 | 예 |
 |---|---|
@@ -162,6 +168,8 @@ KO_TONE_GUARD=off git commit -m "..."
 ## 한계
 
 - 실행할 명령 문자열을 파싱한다. 셸 변수로 넘긴 경로(`git -C $DIR`, `--body-file $F`)는 같은 명령 안에서 대입한 경우만 풀 수 있다. 풀지 못하면 리터럴 경로로 다시 실행하라고 차단한다.
+- `--editor`의 편집 내용, 자동 생성 릴리즈 노트, 원격 템플릿과 MCP·커넥터로 작성하는 글은 검사하지 않는다. 표준 입력 파일(`--body-file -` 등)은 실행 전에 읽을 수 없어 실제 파일 경로로 다시 실행하도록 차단한다.
+- `acli`의 일괄 생성(`create-bulk`)은 검사 대상에 포함하지 않는다.
 - 주석 검사는 `.ts`·`.js`·`.sh`·`.sql`·`.py`·`.yaml` 계열 파일을 대상으로 한다.
 - 모델 지적과 긴 주석 경고는 재시도 시 통과하므로 강제 규칙으로 쓰기에는 한계가 있다.
 
@@ -172,7 +180,7 @@ KO_TONE_GUARD=off git commit -m "..."
 | 플러그인 manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
 | 훅 설정 | `hooks/claude.json` | `hooks/codex.json` |
 | 연결 코드 | `hooks/claude.ts` | `hooks/codex.ts` |
-| 공통 검사 | `hooks/guard.ts`, `hooks/checker.ts`, `hooks/tone.ts`, `hooks/parse.ts` | 동일 |
+| 공통 검사 | `hooks/guard.ts`, `hooks/checker.ts`, `hooks/tone.ts`, `hooks/parse.ts`, `hooks/texts.ts` | 동일 |
 
 ```sh
 claude plugin validate .

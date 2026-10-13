@@ -68,6 +68,36 @@ class CodexHookTest(unittest.TestCase):
         body.write_text('획기적인 설명')
         self.assertIn('PR 본문', self.denied(self.hook(f'gh pr create --title "변경" --body-file "{body}"')))
 
+    def test_github_and_jira_writes(self):
+        for command, label in [
+            ('gh issue create -t "획기적"', '이슈 제목'),
+            ('gh issue edit 1 -b "획기적"', '이슈 본문'),
+            ('gh pr edit 1 -t "획기적"', 'PR 제목'),
+            ('gh issue comment 1 -b "획기적"', '이슈 댓글'),
+            ('gh pr comment 1 -b "획기적"', 'PR 댓글'),
+            ('gh pr review 1 -b "획기적"', 'PR 리뷰'),
+            ('gh release create v1 -t "획기적"', '릴리즈 제목'),
+            ('gh release edit v1 -n "획기적"', '릴리즈 노트'),
+            ('acli jira workitem create --summary "획기적"', 'Jira 제목'),
+            ('acli jira workitem edit --key T-1 -d "획기적"', 'Jira 본문'),
+            ('acli jira workitem comment create --key T-1 -b "획기적"', 'Jira 댓글'),
+            ('acli jira workitem comment update --key T-1 --id 1 -b "획기적"', 'Jira 댓글'),
+        ]:
+            with self.subTest(command=command):
+                self.assertIn(label, self.denied(self.hook(command)))
+                self.assertEqual(self.hook(command.replace('획기적', '캐시 수정')), {})
+
+    def test_jira_json_and_adf_files(self):
+        adf = dict(type='doc', version=1, content=[dict(type='paragraph', content=[dict(type='text', text='획기적')])])
+        body = self.repo / 'body.json'
+        body.write_text(json.dumps(adf))
+        self.assertIn('Jira 댓글', self.denied(self.hook(f'acli jira workitem comment update --body-adf "{body}"')))
+        ticket = self.repo / 'ticket.json'
+        ticket.write_text(json.dumps(dict(summary='캐시 수정', description=adf)))
+        self.assertIn('획기적', self.denied(self.hook(f'acli jira workitem create --from-json "{ticket}"')))
+        self.assertIn('Jira 본문', self.denied(self.hook(f'acli jira workitem edit --description-file "{body}"')))
+        self.assertIn('표준 입력', self.denied(self.hook('gh issue comment 1 --body-file -')))
+
     def test_workdir(self):
         (self.repo / 'a.ts').write_text('// 획기적인 캐시\n')
         self.git('add', 'a.ts')

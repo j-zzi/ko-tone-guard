@@ -1,6 +1,6 @@
 {
   "name": "ko-tone-guard",
-  "version": "0.3.1",
-  "description": "커밋 메시지·추가된 코드 주석·PR 제목과 본문의 한국어 문체 검사",
+  "version": "0.4.0",
+  "description": "커밋 메시지·추가된 주석·GitHub 이슈/PR/리뷰/릴리즈·Jira 티켓/댓글의 한국어 문체 검사",
   "hooks": "./hooks/codex.json"
 }
